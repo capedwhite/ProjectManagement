@@ -3,7 +3,9 @@ import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import authRoutes from "./routes/authRoutes.js";
-
+import projectRoutes from "./routes/projectRoutes.js";
+import projectMemberRoutes from "./routes/projectMembersRoute.js";
+import { searchUser } from "./controller/userController.js";
 const app = express();
 
 app.use(
@@ -20,7 +22,10 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
 app.use("/api/auth", authRoutes);
-
+app.use("/api/projects", projectRoutes);
+app.use("/api/user", searchUser)
+app.use("/api/projects/member", projectMemberRoutes)
+app.use("/uploads", express.static("uploads"));
 app.get("/health", (req, res) => {
   res.json({ status: "ok" });
 });

@@ -43,6 +43,18 @@ export const signup = async (req, res) => {
         passwordHash,
       },
     });
+const pendingInvites = await prisma.projectInvite.findMany({ where: { email } });
+    if (pendingInvites.length > 0) {
+      await prisma.projectMember.createMany({
+        data: pendingInvites.map((invite) => ({
+          projectId: invite.projectId,
+          userId: user.id,
+          role: "member",
+        })),
+        skipDuplicates: true,
+      });
+      await prisma.projectInvite.deleteMany({ where: { email } });
+    }
 
     const token = createToken(user);
     sendAuthCookie(res, token);
