@@ -6,6 +6,8 @@ import {
   createTask,
   deleteProject,
   deleteTask,
+  getmessages,
+  getProjectActivity,
   getProjectById,
   getUserProjects,
   updateProject,
@@ -19,7 +21,7 @@ const router = express.Router();
 router.use(protect);
 
 router.get("/", getUserProjects);
-router.get("/member",getProjectMembers)
+router.get("/shared",getProjectMembers)
 router.post("/", createProject);
 router.get("/:id", getProjectById);
 router.put("/:id", updateProject);
@@ -28,5 +30,7 @@ router.put("/:id/columns", updateProjectColumns);
 router.post("/:id/tasks", upload.array("attachments", 10), createTask);
 router.put("/:projectId/tasks/:taskId", upload.array("attachments", 10), updateTask);
 router.delete("/:projectId/tasks/:taskId", deleteTask);
-
+// GET /api/projects/:id/messages
+router.get("/:id/messages", getmessages);
+router.get("/:projectId/activity", getProjectActivity);
 export default router;

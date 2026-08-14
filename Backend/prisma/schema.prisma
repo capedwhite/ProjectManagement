@@ -17,9 +17,11 @@ model User {
   email        String    @unique
   passwordHash String
   projects     Project[]
-  tasks        Task[]
+  assignedTasks Task[] @relation("TaskAssignees")
   members ProjectMember[]
   createdAt    DateTime  @default(now())
+  messages Message[]
+  activities Activity[]
 }
 
 model Project {
@@ -33,6 +35,8 @@ model Project {
   members ProjectMember[]
   createdAt   DateTime @default(now())
   invites ProjectInvite[]
+  messages Message[]
+  activities Activity[]
 }
 model Task {
   id          Int       @id @default(autoincrement())
@@ -47,8 +51,7 @@ model Task {
   comments    Json      @default("[]")
   project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   projectId   Int
-  assignee    User?     @relation(fields: [assigneeId], references: [id])
-  assigneeId  Int?
+  assignee    User[]      @relation("TaskAssignees")
   createdAt   DateTime  @default(now())
 }
 model ProjectMember {
@@ -70,4 +73,23 @@ model ProjectInvite {
   createdAt DateTime @default(now())
 
   @@unique([projectId, email]) // can't double-invite the same email to the same project
+}
+model Message {
+  id        Int      @id @default(autoincrement())
+  text      String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId Int
+  user      User     @relation(fields: [userId], references: [id])
+  userId    Int
+  createdAt DateTime @default(now())
+}
+model Activity {
+  id        Int      @id @default(autoincrement())
+  type      String   // "task_created" | "task_updated" | "member_added" etc.
+  message   String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId Int
+  user      User     @relation(fields: [userId], references: [id])
+  userId    Int
+  createdAt DateTime @default(now())
 }
