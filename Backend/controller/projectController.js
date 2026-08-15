@@ -503,14 +503,14 @@ export const createTask = async (req, res) => {
         },
       },
     });
-const creator = await prisma.user.findUnique({ where: { id: req.userId } });
+const creator = await prisma.user.findUnique({ where: { id: req.user?.id } });
 
 const activity = await prisma.activity.create({
   data: {
     type: "task_created",
     message: `${creator.name} created "${task.title}"`,
     projectId: task.projectId,
-    userId: req.userId,
+    userId: req.user?.id,
   },
   include: { user: { select: { id: true, name: true } } },
 });
@@ -549,9 +549,7 @@ export const updateTask = async (req, res) => {
     } = req.body;
 
     if (!userId) {
-      return res.status(401).json({
-        message: "Unauthorized",
-      });
+      return res.status(401).json({ message: "Unauthorized" });
     }
 
     const projectIdNumber = Number(projectId);
@@ -562,32 +560,20 @@ export const updateTask = async (req, res) => {
     // -----------------------------------------
 
     const project = await prisma.project.findUnique({
-      where: {
-        id: projectIdNumber,
-      },
-
-      include: {
-        members: true,
-      },
+      where: { id: projectIdNumber },
+      include: { members: true },
     });
 
     if (!project) {
-      return res.status(404).json({
-        message: "Project not found",
-      });
+      return res.status(404).json({ message: "Project not found" });
     }
 
     // -----------------------------------------
-    // PERMISSIONS
+    // PERMISSIONS — anyone with access (owner or member) can edit tasks
     // -----------------------------------------
 
-    const isOwner =
-      project.ownerId === userId;
-
-    const isMember =
-      project.members.some(
-        (member) => member.userId === userId
-      );
+    const isOwner = project.ownerId === userId;
+    const isMember = project.members.some((member) => member.userId === userId);
 
     if (!isOwner && !isMember) {
       return res.status(403).json({
@@ -600,190 +586,63 @@ export const updateTask = async (req, res) => {
     // -----------------------------------------
 
     const task = await prisma.task.findFirst({
-      where: {
-        id: taskIdNumber,
-        projectId: projectIdNumber,
-      },
+      where: { id: taskIdNumber, projectId: projectIdNumber },
     });
 
     if (!task) {
-      return res.status(404).json({
-        message: "Task not found",
-      });
+      return res.status(404).json({ message: "Task not found" });
     }
 
-    // =========================================
-    // MEMBER
-    // =========================================
-
-    if (!isOwner) {
-      const allowedFields = [
-        "status",
-        "position",
-      ];
-
-      const providedFields =
-        Object.keys(req.body);
-
-      const hasUnauthorizedField =
-        providedFields.some(
-          (field) =>
-            !allowedFields.includes(field)
-        );
-
-      if (hasUnauthorizedField) {
-        return res.status(403).json({
-          message:
-            "Members can only move tasks between columns",
-        });
-      }
-
-      const updatedTask =
-        await prisma.task.update({
-          where: {
-            id: taskIdNumber,
-          },
-
-          data: {
-            ...(status !== undefined && {
-              status,
-            }),
-
-            ...(position !== undefined && {
-              position,
-            }),
-          },
-
-          include: {
-            assignee: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-              },
-            },
-          },
-        });
-await logTaskMove({ task, newStatus: status, userId, projectId: projectIdNumber });
-
-      return res.status(200).json({
-        task: updatedTask,
-      });
-    }
-
-    // =========================================
-    // OWNER
-    // =========================================
+    // -----------------------------------------
+    // BUILD UPDATE DATA — same for owner and member now
+    // -----------------------------------------
 
     const data = {
-      title:
-        title?.trim() || task.title,
-
-      description:
-        description !== undefined
-          ? description.trim()
-          : task.description,
-
-      status:
-        status !== undefined
-          ? status
-          : task.status,
-
-      priority:
-        priority !== undefined
-          ? priority
-          : task.priority,
-
-      position:
-        position !== undefined
-          ? position
-          : task.position,
-
+      title: title?.trim() || task.title,
+      description: description !== undefined ? description.trim() : task.description,
+      status: status !== undefined ? status : task.status,
+      priority: priority !== undefined ? priority : task.priority,
+      position: position !== undefined ? position : task.position,
       dueDate:
-        dueDate !== undefined
-          ? dueDate
-            ? new Date(dueDate)
-            : null
-          : task.dueDate,
-
-      labels:
-        labels !== undefined
-          ? normalizeLabels(labels)
-          : task.labels || [],
-
+        dueDate !== undefined ? (dueDate ? new Date(dueDate) : null) : task.dueDate,
+      labels: labels !== undefined ? normalizeLabels(labels) : task.labels || [],
       attachments:
-        existingAttachments !== undefined ||
-        (req.files || []).length > 0
-          ? normalizeAttachments(
-              existingAttachments,
-              req.files
-            )
+        existingAttachments !== undefined || (req.files || []).length > 0
+          ? normalizeAttachments(existingAttachments, req.files)
           : task.attachments || [],
-
-      comments:
-        comments !== undefined
-          ? normalizeComments(comments)
-          : task.comments || [],
+      comments: comments !== undefined ? normalizeComments(comments) : task.comments || [],
     };
 
     // -----------------------------------------
-    // ASSIGNEES
+    // ASSIGNEES — anyone with access can reassign, but only to actual project members
     // -----------------------------------------
 
     if (assigneeIds !== undefined) {
-      let requestedIds =
-        normalizeAssigneeIds(
-          assigneeIds
-        );
-
-      requestedIds =
-        Array.from(
-          new Set(requestedIds)
-        );
+      let requestedIds = normalizeAssigneeIds(assigneeIds);
+      requestedIds = Array.from(new Set(requestedIds));
 
       let validatedAssigneeIds = [];
 
       if (requestedIds.length > 0) {
-        const members =
-          await prisma.projectMember.findMany({
-            where: {
-              projectId: projectIdNumber,
+        const members = await prisma.projectMember.findMany({
+          where: {
+            projectId: projectIdNumber,
+            userId: { in: requestedIds },
+          },
+          select: { userId: true },
+        });
 
-              userId: {
-                in: requestedIds,
-              },
-            },
+        validatedAssigneeIds = members.map((member) => member.userId);
 
-            select: {
-              userId: true,
-            },
-          });
-
-        validatedAssigneeIds =
-          members.map(
-            (member) => member.userId
-          );
-
-        // Make sure EVERY selected user
-        // belongs to this project
-        if (
-          validatedAssigneeIds.length !==
-          requestedIds.length
-        ) {
+        if (validatedAssigneeIds.length !== requestedIds.length) {
           return res.status(400).json({
-            message:
-              "One or more assignees are not members of this project",
+            message: "One or more assignees are not members of this project",
           });
         }
       }
 
-      // Replace current assignees
       data.assignee = {
-        set: validatedAssigneeIds.map(
-          (userId) => ({
-            id: userId,
-          })
-        ),
+        set: validatedAssigneeIds.map((userId) => ({ id: userId })),
       };
     }
 
@@ -791,44 +650,46 @@ await logTaskMove({ task, newStatus: status, userId, projectId: projectIdNumber 
     // UPDATE
     // -----------------------------------------
 
-    const updatedTask =
-      await prisma.task.update({
-        where: {
-          id: taskIdNumber,
-        },
-
-        data,
-
-        include: {
-          assignee: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-            },
-          },
-        },
-      });
-await logTaskMove({ task, newStatus: status, userId, projectId: projectIdNumber });
-    return res.status(200).json({
-      task: updatedTask,
+    const updatedTask = await prisma.task.update({
+      where: { id: taskIdNumber },
+      data,
+      include: {
+        assignee: { select: { id: true, name: true, email: true } },
+      },
     });
 
+    await logTaskMove({ task, newStatus: status, userId, projectId: projectIdNumber });
+
+    return res.status(200).json({ task: updatedTask });
   } catch (error) {
-    console.error(
-      "Update task error:",
-      error
-    );
-
-    return res.status(500).json({
-      message: "Failed to update task",
-    });
+    console.error("Update task error:", error);
+    return res.status(500).json({ message: "Failed to update task" });
   }
 };
 
 export const deleteTask = async (req, res) => {
   try {
     const { projectId, taskId } = req.params;
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const project = await prisma.project.findUnique({
+      where: { id: Number(projectId) },
+    });
+
+    if (!project) {
+      return res.status(404).json({ message: "Project not found" });
+    }
+
+    // Owner-only, per your permission design
+    if (project.ownerId !== userId) {
+      return res.status(403).json({
+        message: "Only the project owner can delete tasks",
+      });
+    }
 
     const task = await prisma.task.findFirst({
       where: {
