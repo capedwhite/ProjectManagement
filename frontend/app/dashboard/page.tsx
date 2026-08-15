@@ -238,12 +238,12 @@ export default function DashboardPage() {
   }
 
   return (
-    <main className="min-h-screen p-6 sm:p-8 space-y-8 bg-[#f8fafb]">
+    <main className="min-h-screen p-4 sm:p-6 md:p-8 space-y-6 sm:space-y-8 bg-[#f8fafb]">
       {/* Header Banner */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Workspace</p>
-          <h1 className="text-3xl font-bold text-slate-900 mt-1">
+          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 mt-1">
             Welcome back, {user?.name || user?.email || "User"}!
           </h1>
           <p className="text-sm text-slate-600 mt-1">
@@ -251,17 +251,17 @@ export default function DashboardPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5 sm:gap-3 flex-wrap">
           <NotificationBell projects={projects} user={user} />
           <Link
             href="/tasks"
-            className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition"
+            className="rounded-xl border border-slate-200 bg-white px-3.5 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm font-semibold text-slate-700 hover:bg-slate-50 transition shadow-2xs"
           >
             My Tasks ({totalTasks})
           </Link>
           <Link
             href="/projects"
-            className="rounded-xl bg-[#3ec170] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#65cd8c] transition"
+            className="rounded-xl bg-[#3ec170] px-3.5 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm font-semibold text-white hover:bg-[#65cd8c] transition shadow-2xs"
           >
             Projects →
           </Link>

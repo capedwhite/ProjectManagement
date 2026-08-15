@@ -358,13 +358,13 @@ export default function TasksPage() {
   const selectedProjectObj = projects.find((p) => p.id === selectedProjectId);
 
   return (
-    <main className="min-h-screen p-8 space-y-6 bg-[#f8fafb]">
+    <main className="min-h-screen p-4 sm:p-6 md:p-8 space-y-6 bg-[#f8fafb]">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Workspace</p>
-          <h1 className="text-3xl font-bold text-slate-900 mt-1">My Tasks</h1>
-          <p className="text-sm text-slate-500 mt-1">
+          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 mt-1">My Tasks</h1>
+          <p className="text-xs sm:text-sm text-slate-500 mt-1">
             Prioritized worklist of tasks assigned to you across all projects
           </p>
         </div>

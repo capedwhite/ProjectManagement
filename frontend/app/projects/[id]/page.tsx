@@ -132,6 +132,30 @@ const defaultColumns: BoardColumn[] = [
   { id: "completed", name: "Completed" },
 ];
 
+const AVATAR_COLORS = [
+  "bg-[#3ec170]/15 text-[#2b9f58] border-white",
+  "bg-indigo-100 text-indigo-700 border-white",
+  "bg-purple-100 text-purple-700 border-white",
+  "bg-amber-100 text-amber-700 border-white",
+  "bg-rose-100 text-rose-700 border-white",
+  "bg-sky-100 text-sky-700 border-white",
+  "bg-teal-100 text-teal-700 border-white",
+];
+
+function getInitials(name?: string, email?: string): string {
+  if (name && name.trim()) {
+    const parts = name.trim().split(" ").filter(Boolean);
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[1][0]).toUpperCase();
+    }
+    return name.slice(0, 2).toUpperCase();
+  }
+  if (email && email.trim()) {
+    return email.slice(0, 2).toUpperCase();
+  }
+  return "U";
+}
+
 const normalizeColumnId = (value: string) =>
   value
     .trim()
@@ -254,6 +278,30 @@ export default function ProjectDetailPage() {
   // Delete project modal state
   const [deleteProjectModalOpen, setDeleteProjectModalOpen] = useState(false);
   const [isDeletingProject, setIsDeletingProject] = useState(false);
+
+  // Add board modal state
+  const [addBoardModalOpen, setAddBoardModalOpen] = useState(false);
+  const [newBoardName, setNewBoardName] = useState("");
+  const [newBoardError, setNewBoardError] = useState("");
+  const [addingBoard, setAddingBoard] = useState(false);
+
+  // Collaborators dropdown state
+  const [membersDropdownOpen, setMembersDropdownOpen] = useState(false);
+  const membersRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (membersRef.current && !membersRef.current.contains(event.target as Node)) {
+        setMembersDropdownOpen(false);
+      }
+    };
+    if (membersDropdownOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [membersDropdownOpen]);
 
   const loadProjectMembers = async () => {
     try {
@@ -644,22 +692,47 @@ export default function ProjectDetailPage() {
     }
   };
 
-  const handleAddColumn = async () => {
-    const nextName = window.prompt("Enter a new board name:", "Review");
-    if (!nextName || !nextName.trim()) return;
+  const handleOpenAddBoardModal = () => {
+    setNewBoardName("");
+    setNewBoardError("");
+    setAddBoardModalOpen(true);
+  };
+
+  const handleSubmitAddBoard = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = newBoardName.trim();
+    if (!trimmed) {
+      setNewBoardError("Board name is required");
+      return;
+    }
 
     const newColumn: BoardColumn = {
-      id: normalizeColumnId(nextName),
-      name: nextName.trim(),
+      id: normalizeColumnId(trimmed),
+      name: trimmed,
     };
 
-    const updatedColumns = [...(project?.columns || defaultColumns), newColumn];
+    const currentColumns = project?.columns && project.columns.length > 0 ? project.columns : defaultColumns;
+    if (currentColumns.some((c) => c.name.toLowerCase() === trimmed.toLowerCase() || c.id === newColumn.id)) {
+      setNewBoardError("A board with this name already exists");
+      return;
+    }
+
+    const updatedColumns = [...currentColumns, newColumn];
+    setAddingBoard(true);
 
     try {
       await api.put(`/projects/${projectId}/columns`, { columns: updatedColumns });
       setProject((prev) => (prev ? { ...prev, columns: updatedColumns } : prev));
+      toast.success("Board added successfully");
+      setAddBoardModalOpen(false);
+      setNewBoardName("");
+      setNewBoardError("");
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Failed to add board");
+      const msg = error instanceof Error ? error.message : "Failed to add board";
+      setNewBoardError(msg);
+      toast.error(msg);
+    } finally {
+      setAddingBoard(false);
     }
   };
 
@@ -804,7 +877,7 @@ export default function ProjectDetailPage() {
   const priorityBadgeClass = priorityStyles[taskDraft.priority] || priorityStyles.medium;
 
   return (
-    <main className="min-h-screen bg-[#f8fafb] p-6 text-slate-900">
+    <main className="min-h-screen bg-[#f8fafb] p-4 sm:p-6 md:p-8 text-slate-900">
       <div className="mx-auto max-w-7xl">
         {/* Project Header */}
         <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -897,54 +970,184 @@ export default function ProjectDetailPage() {
         )}
 
         {/* Top Horizontal Section Bar */}
-        <div className="mb-6 flex items-center gap-1.5 rounded-2xl border border-slate-200 bg-white p-1.5">
-          <button
-            type="button"
-            onClick={() => setActiveTab("kanban")}
-            className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${activeTab === "kanban"
-                ? "bg-[#3ec170] text-white"
-                : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-              }`}
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2m0 10V7m6 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
-            </svg>
-            Kanban Board
-          </button>
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-xs">
+          {/* Left: Tab Buttons */}
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setActiveTab("kanban")}
+              className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${activeTab === "kanban"
+                  ? "bg-[#3ec170] text-white shadow-xs"
+                  : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                }`}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2m0 10V7m6 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+              </svg>
+              Kanban Board
+            </button>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab("list")}
-            className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${activeTab === "list"
-                ? "bg-[#3ec170] text-white"
-                : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-              }`}
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-            </svg>
-            Task List
-          </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("list")}
+              className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${activeTab === "list"
+                  ? "bg-[#3ec170] text-white shadow-xs"
+                  : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                }`}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+              </svg>
+              Task List
+            </button>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab("dashboard")}
-            className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${activeTab === "dashboard"
-                ? "bg-[#3ec170] text-white"
-                : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-              }`}
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
-            </svg>
-            Dashboard
-          </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("dashboard")}
+              className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${activeTab === "dashboard"
+                  ? "bg-[#3ec170] text-white shadow-xs"
+                  : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                }`}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
+              </svg>
+              Dashboard
+            </button>
+          </div>
+
+          {/* Right: Collaborator Avatars with Minimalist Dropdown */}
+          <div className="relative pr-1.5" ref={membersRef}>
+            <button
+              type="button"
+              onClick={() => setMembersDropdownOpen((prev) => !prev)}
+              className="flex items-center gap-2 rounded-xl py-1 px-2.5 hover:bg-slate-50 transition border border-transparent hover:border-slate-200 cursor-pointer"
+              title="Click to view project collaborators"
+            >
+              <div className="flex items-center -space-x-2 overflow-hidden">
+                {memberOptions.slice(0, 4).map((member, i) => (
+                  <span
+                    key={member.id}
+                    title={`${member.name} (${member.role || "member"})`}
+                    className={`inline-flex h-7 w-7 items-center justify-center rounded-full border-2 border-white text-[10px] font-bold shadow-xs transition hover:z-10 hover:scale-110 ${
+                      AVATAR_COLORS[i % AVATAR_COLORS.length]
+                    }`}
+                  >
+                    {getInitials(member.name, member.email)}
+                  </span>
+                ))}
+                {memberOptions.length > 4 && (
+                  <span
+                    title={`${memberOptions.length - 4} more collaborators`}
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-slate-100 text-[10px] font-bold text-slate-600 shadow-xs"
+                  >
+                    +{memberOptions.length - 4}
+                  </span>
+                )}
+                {memberOptions.length === 0 && (
+                  <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-slate-100 text-[10px] text-slate-400">
+                    <FiUsers className="w-3.5 h-3.5" />
+                  </span>
+                )}
+              </div>
+
+              <span className="text-xs font-semibold text-slate-600 hidden sm:inline">
+                {memberOptions.length} {memberOptions.length === 1 ? "Collaborator" : "Collaborators"}
+              </span>
+
+              <svg
+                className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${
+                  membersDropdownOpen ? "rotate-180" : ""
+                }`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            {/* Minimalist Dropdown List */}
+            {membersDropdownOpen && (
+              <div className="absolute right-0 top-full mt-2 w-72 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl z-50 animate-in fade-in zoom-in-95 duration-150">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2 mb-2 px-1">
+                  <div className="flex items-center gap-1.5">
+                    <FiUsers className="w-3.5 h-3.5 text-[#3ec170]" />
+                    <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                      Collaborators
+                    </span>
+                  </div>
+                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                    {memberOptions.length}
+                  </span>
+                </div>
+
+                <div className="max-h-60 overflow-y-auto space-y-1.5 pr-0.5">
+                  {memberOptions.length === 0 ? (
+                    <p className="text-xs text-slate-400 py-3 text-center">No collaborators found</p>
+                  ) : (
+                    memberOptions.map((member, i) => (
+                      <div
+                        key={member.id}
+                        className="flex items-center justify-between gap-2.5 rounded-xl p-2 hover:bg-slate-50 transition"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <span
+                            className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+                              AVATAR_COLORS[i % AVATAR_COLORS.length]
+                            }`}
+                          >
+                            {getInitials(member.name, member.email)}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold text-slate-800 truncate leading-tight">
+                              {member.name}
+                            </p>
+                            {member.email && (
+                              <p className="text-[11px] text-slate-400 truncate mt-0.5">
+                                {member.email}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        <span
+                          className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold capitalize ${
+                            member.role === "owner"
+                              ? "bg-amber-50 text-amber-700 border border-amber-200/60"
+                              : "bg-[#3ec170]/10 text-[#2b9f58]"
+                          }`}
+                        >
+                          {member.role || "Member"}
+                        </span>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                <div className="border-t border-slate-100 pt-2 mt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMembersDropdownOpen(false);
+                      setInviteOpen(true);
+                      setInviteMsg(null);
+                    }}
+                    className="w-full rounded-xl bg-[#3ec170]/10 hover:bg-[#3ec170]/20 text-[#2b9f58] font-semibold text-xs py-2 px-3 transition flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <FiPlus className="w-3.5 h-3.5" />
+                    <span>Invite Teammate</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Tab Content 1: Kanban Board */}
         {activeTab === "kanban" && (
-          <div className="grid gap-5 md:grid-cols-3 xl:grid-cols-4">
+          <div className="grid gap-5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {columns.map((column) => (
               <div
                 key={column.id}
@@ -1097,7 +1300,7 @@ export default function ProjectDetailPage() {
 
             {/* Add Board Card at the end of latest board */}
             <div
-              onClick={handleAddColumn}
+              onClick={handleOpenAddBoardModal}
               className="group flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-300 bg-slate-100/50 p-6 min-h-[260px] cursor-pointer transition hover:border-[#3ec170] hover:bg-[#3ec170]/5"
             >
               <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white border border-slate-200 text-slate-400 group-hover:border-[#3ec170] group-hover:bg-[#3ec170] group-hover:text-white transition">
@@ -2534,11 +2737,93 @@ export default function ProjectDetailPage() {
         </div>
       )}
 
+      {/* ── Add Board / Column Modal Popup ── */}
+      {addBoardModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 backdrop-blur-xs p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 text-slate-900 border border-slate-200 shadow-2xl">
+            <div className="mb-4 flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#3ec170]/15 text-[#2b9f58]">
+                  <FiPlus className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Add New Board</h3>
+                  <p className="text-xs text-slate-500">Create a new stage for your tasks</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setAddBoardModalOpen(false);
+                  setNewBoardError("");
+                }}
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitAddBoard} className="space-y-4">
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-700">
+                  Board Name
+                </label>
+                <input
+                  type="text"
+                  autoFocus
+                  value={newBoardName}
+                  onChange={(e) => {
+                    setNewBoardName(e.target.value);
+                    if (newBoardError) setNewBoardError("");
+                  }}
+                  placeholder="e.g. In Review, QA, Backlog, Blocked"
+                  className={`w-full rounded-xl border px-3.5 py-2.5 text-sm outline-none transition focus:border-[#3ec170] focus:ring-1 focus:ring-[#3ec170] ${
+                    newBoardError ? "border-red-400 bg-red-50/20" : "border-slate-300 bg-slate-50/50"
+                  }`}
+                />
+                {newBoardError && (
+                  <p className="mt-1 text-xs text-red-600">{newBoardError}</p>
+                )}
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  disabled={addingBoard}
+                  onClick={() => {
+                    setAddBoardModalOpen(false);
+                    setNewBoardError("");
+                  }}
+                  className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={addingBoard || !newBoardName.trim()}
+                  className="rounded-xl bg-[#3ec170] px-5 py-2 text-sm font-semibold text-white hover:bg-[#65cd8c] transition flex items-center gap-2 disabled:opacity-50 cursor-pointer shadow-sm shadow-[#3ec170]/30"
+                >
+                  {addingBoard && (
+                    <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  )}
+                  <span>{addingBoard ? "Adding..." : "Add Board"}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* ── Chat Side Panel (slides in from right) ── */}
+      {chatOpen && (
+        <div
+          onClick={() => setChatOpen(false)}
+          className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-xs sm:hidden"
+        />
+      )}
       <div
-        className="fixed inset-y-0 right-0 z-50 flex flex-col border-l border-slate-200 bg-white transition-transform duration-300"
+        className="fixed inset-y-0 right-0 z-50 flex flex-col border-l border-slate-200 bg-white transition-transform duration-300 w-full sm:w-[360px] max-w-full"
         style={{
-          width: 360,
           transform: chatOpen ? "translateX(0)" : "translateX(100%)",
         }}
       >
@@ -2569,10 +2854,15 @@ export default function ProjectDetailPage() {
       </div>
 
       {/* ── Activity Side Panel (slides in from left) ── */}
+      {activityOpen && (
+        <div
+          onClick={() => setActivityOpen(false)}
+          className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-xs sm:hidden"
+        />
+      )}
       <div
-        className="fixed inset-y-0 left-0 z-50 flex flex-col border-r border-slate-200 bg-white transition-transform duration-300"
+        className="fixed inset-y-0 left-0 z-50 flex flex-col border-r border-slate-200 bg-white transition-transform duration-300 w-full sm:w-[360px] max-w-full"
         style={{
-          width: 360,
           transform: activityOpen ? "translateX(0)" : "translateX(-100%)",
         }}
       >

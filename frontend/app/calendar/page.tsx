@@ -317,7 +317,7 @@ export default function CalendarPage() {
   }
 
   return (
-    <main className="min-h-screen p-4 sm:p-8 space-y-6 bg-[#f8fafb]">
+    <main className="min-h-screen p-4 sm:p-6 md:p-8 space-y-6 bg-[#f8fafb]">
       {/* Top Header & Workspace Breadcrumb */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -482,7 +482,7 @@ export default function CalendarPage() {
                 return (
                   <div
                     key={`${day.dateString}-${idx}`}
-                    className={`min-h-[115px] sm:min-h-[125px] p-2 transition flex flex-col justify-between ${
+                    className={`min-h-[75px] sm:min-h-[115px] md:min-h-[125px] p-1 sm:p-2 transition flex flex-col justify-between ${
                       day.isCurrentMonth
                         ? "bg-white"
                         : "bg-slate-50/70 text-slate-400"
