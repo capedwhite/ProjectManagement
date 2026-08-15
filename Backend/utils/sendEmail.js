@@ -47,3 +47,27 @@ export async function sendInviteEmail({
 
   console.log("Email sent:", info.messageId);
 }
+export async function sendPasswordResetEmail({ to, name, resetLink }) {
+  try {
+    await transporter.sendMail({
+      from: "onboarding@resend.dev",
+      to,
+      subject: "Reset your ProjectHub password",
+      html: `
+        <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
+          <h2 style="color: #3ec170;">Reset your password</h2>
+          <p>Hi ${name}, we got a request to reset your password. This link expires in 30 minutes.</p>
+          <a href="${resetLink}"
+             style="display: inline-block; background: #1a4d33; color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none; margin-top: 12px;">
+            Reset Password
+          </a>
+          <p style="font-size: 12px; color: #888; margin-top: 20px;">
+            If you didn't request this, you can safely ignore this email.
+          </p>
+        </div>
+      `,
+    });
+  } catch (err) {
+    console.error("Failed to send reset email:", err);
+  }
+}

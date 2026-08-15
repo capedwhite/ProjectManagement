@@ -33,13 +33,16 @@ async function request<T>(
     : await response.text();
 
   if (!response.ok) {
-    throw new Error(
-      typeof payload === "object" && payload && "message" in payload
-        ? String((payload as { message?: string }).message)
-        : typeof payload === "string"
+    const errorMsg =
+      typeof payload === "object" && payload
+        ? (payload as { error?: string; message?: string }).error ||
+          (payload as { error?: string; message?: string }).message ||
+          "Request failed"
+        : typeof payload === "string" && payload
           ? payload
-          : "Request failed",
-    );
+          : "Request failed";
+
+    throw new Error(String(errorMsg));
   }
 
   return payload as T;

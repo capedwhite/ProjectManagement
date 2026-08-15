@@ -8,9 +8,11 @@ type User = { id: number; name: string; email: string };
 export default function InviteSearch({
   projectId,
   onInvite,
+  inviting = false,
 }: {
   projectId: number;
   onInvite: (email: string) => void;
+  inviting?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<User[]>([]);
@@ -79,10 +81,13 @@ export default function InviteSearch({
 
         <button
           type="submit"
-          disabled={!query.trim()}
-          className="rounded-xl bg-[#3ec170] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#65cd8c] disabled:opacity-40 disabled:cursor-not-allowed transition shrink-0"
+          disabled={!query.trim() || inviting}
+          className="rounded-xl bg-[#3ec170] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#65cd8c] disabled:opacity-40 disabled:cursor-not-allowed transition shrink-0 flex items-center gap-2"
         >
-          Send Invite
+          {inviting && (
+            <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+          )}
+          <span>{inviting ? "Sending..." : "Send Invite"}</span>
         </button>
       </form>
 
@@ -92,8 +97,12 @@ export default function InviteSearch({
           {results.map((user) => (
             <div
               key={user.id}
-              onClick={() => handleSendInvite(user.email)}
-              className="flex items-center justify-between rounded-lg p-2.5 hover:bg-[#3ec170]/10 cursor-pointer transition"
+              onClick={() => {
+                if (!inviting) handleSendInvite(user.email);
+              }}
+              className={`flex items-center justify-between rounded-lg p-2.5 hover:bg-[#3ec170]/10 transition ${
+                inviting ? "opacity-60 cursor-not-allowed" : "cursor-pointer"
+              }`}
             >
               <div className="min-w-0 flex-1">
                 <p className="text-xs font-semibold text-slate-900 truncate">{user.name}</p>
@@ -101,12 +110,16 @@ export default function InviteSearch({
               </div>
               <button
                 type="button"
+                disabled={inviting}
                 onClick={(e) => {
                   e.stopPropagation();
                   handleSendInvite(user.email);
                 }}
-                className="rounded-lg bg-[#3ec170] px-3 py-1 text-xs font-semibold text-white hover:bg-[#65cd8c] transition ml-2"
+                className="rounded-lg bg-[#3ec170] px-3 py-1 text-xs font-semibold text-white hover:bg-[#65cd8c] disabled:opacity-50 transition ml-2 flex items-center gap-1.5"
               >
+                {inviting && (
+                  <span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                )}
                 Invite
               </button>
             </div>
@@ -120,9 +133,13 @@ export default function InviteSearch({
           <span>No user found matching "{query}".</span>
           <button
             type="button"
+            disabled={inviting}
             onClick={() => handleSendInvite(query)}
-            className="rounded-lg bg-[#3ec170] px-3 py-1 text-xs font-semibold text-white hover:bg-[#65cd8c] transition"
+            className="rounded-lg bg-[#3ec170] px-3 py-1 text-xs font-semibold text-white hover:bg-[#65cd8c] disabled:opacity-50 transition flex items-center gap-1.5"
           >
+            {inviting && (
+              <span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
+            )}
             Invite "{query}"
           </button>
         </div>

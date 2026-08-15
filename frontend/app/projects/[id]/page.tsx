@@ -5,6 +5,7 @@ import { editProjectSchema, taskSchema } from "@/lib/schemas";
 import InviteSearch from "@/components/searchbar";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import {
   ResponsiveContainer,
   PieChart,
@@ -140,8 +141,15 @@ const normalizeColumnId = (value: string) =>
 
 const priorityStyles: Record<string, string> = {
   low: "border-[#3ec170]/30 bg-[#3ec170]/10 text-[#2b9f58]",
-  medium: "border-[#3ec1b1]/30 bg-[#3ec1b1]/10 text-[#1f8e81]",
-  high: "border-rose-200 bg-rose-50 text-rose-700",
+  medium: "border-amber-200/70 bg-amber-50 text-amber-700",
+  high: "border-red-200 bg-red-50 text-red-700",
+};
+
+const getPriorityTopBorder = (priority?: string) => {
+  const p = String(priority || "medium").toLowerCase();
+  if (p === "high") return "border-t-4 border-t-red-500";
+  if (p === "low") return "border-t-4 border-t-[#3ec170]";
+  return "border-t-4 border-t-amber-400"; // medium / intermediate
 };
 
 const getAttachmentUrl = (attachment: AttachmentItem) => {
@@ -242,6 +250,10 @@ export default function ProjectDetailPage() {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviting, setInviting] = useState(false);
   const [inviteMsg, setInviteMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  // Delete project modal state
+  const [deleteProjectModalOpen, setDeleteProjectModalOpen] = useState(false);
+  const [isDeletingProject, setIsDeletingProject] = useState(false);
 
   const loadProjectMembers = async () => {
     try {
@@ -688,8 +700,9 @@ export default function ProjectDetailPage() {
 
       setEditingProject(false);
       setProjectFieldErrors({});
+      toast.success("Project edited successfully");
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Failed to update project");
+      toast.error(error instanceof Error ? error.message : "Failed to update project");
     }
   };
 
@@ -715,16 +728,24 @@ export default function ProjectDetailPage() {
     }
   };
 
-  const handleDeleteProject = async () => {
+  const handleDeleteProject = () => {
     if (!project) return;
-    const confirmed = window.confirm("Are you sure you want to delete this project?");
-    if (!confirmed) return;
+    setDeleteProjectModalOpen(true);
+  };
+
+  const handleConfirmDeleteProject = async () => {
+    if (!project) return;
+    setIsDeletingProject(true);
 
     try {
       await api.delete(`/projects/${projectId}`);
+      toast.success("Project deleted successfully");
+      setDeleteProjectModalOpen(false);
       router.push("/projects");
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Failed to delete project");
+      toast.error(error instanceof Error ? error.message : "Failed to delete project");
+    } finally {
+      setIsDeletingProject(false);
     }
   };
 
@@ -754,11 +775,15 @@ export default function ProjectDetailPage() {
         `/projects/member/${projectId}/invite`,
         { email },
       );
-      setInviteMsg({ type: "success", text: res.message || `Invitation sent to ${email}` });
+      const successText = res.message || `Invitation sent to ${email}`;
+      setInviteMsg({ type: "success", text: successText });
+      toast.success(successText);
       loadProjectMembers();
       loadProject();
     } catch (err) {
-      setInviteMsg({ type: "error", text: err instanceof Error ? err.message : "Failed to send invitation" });
+      const errorText = err instanceof Error ? err.message : "Failed to send invitation";
+      setInviteMsg({ type: "error", text: errorText });
+      toast.error(errorText);
     } finally {
       setInviting(false);
     }
@@ -855,8 +880,14 @@ export default function ProjectDetailPage() {
                 Close ✕
               </button>
             </div>
-            <InviteSearch projectId={projectId} onInvite={handleInvite} />
-            {inviteMsg && (
+            <InviteSearch projectId={projectId} onInvite={handleInvite} inviting={inviting} />
+            {inviting && (
+              <div className="flex items-center gap-2 text-xs font-medium text-[#2b9f58]">
+                <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#3ec170] border-t-transparent" />
+                <span>Sending invitation...</span>
+              </div>
+            )}
+            {inviteMsg && !inviting && (
               <p className={`text-xs font-medium ${inviteMsg.type === "success" ? "text-[#2b9f58]" : "text-rose-600"
                 }`}>
                 {inviteMsg.text}
@@ -968,7 +999,7 @@ export default function ProjectDetailPage() {
                         setDraggedTask(task);
                       }}
                       onClick={() => setViewingTask(task)}
-                      className="group relative cursor-pointer rounded-xl border border-slate-200/90 bg-white p-3.5 transition hover:border-[#3ec170]/60 active:cursor-grabbing"
+                      className={`group relative cursor-pointer rounded-xl border border-slate-200/90 bg-white p-3.5 transition hover:border-[#3ec170]/60 active:cursor-grabbing ${getPriorityTopBorder(task.priority)}`}
                     >
                       <div className="mb-2 flex items-center justify-between gap-2">
                         <h3 className="font-semibold text-slate-900 group-hover:text-[#2b9f58] transition text-sm">{task.title}</h3>
@@ -1080,131 +1111,232 @@ export default function ProjectDetailPage() {
         )}
 
         {/* Tab Content 2: Vertical Task List */}
-        {activeTab === "list" && (
-          <div className="space-y-4 rounded-2xl border border-slate-200/90 bg-white p-6">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-              <div>
-                <h2 className="text-xl font-bold text-slate-900">Project Tasks</h2>
-                <p className="text-xs text-slate-500">Showing all tasks in vertical list format</p>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="rounded-full bg-slate-100 border border-slate-200 px-3 py-1 text-xs text-slate-700 font-medium">
-                  {(project.tasks || []).length} Total Tasks
-                </span>
-                <button
-                  type="button"
-                  onClick={() => openNewTaskModal(columns[0] || defaultColumns[0])}
-                  className="rounded-xl bg-[#3ec170] px-4 py-2 text-sm font-semibold text-white hover:bg-[#65cd8c] transition"
-                >
-                  + Add Task
-                </button>
-              </div>
-            </div>
+        {activeTab === "list" && (() => {
+          const allTasks = project.tasks || [];
+          const myTasks = allTasks.filter((t) =>
+            getTaskAssignees(t).some((a) => a.id === currentUser?.id)
+          );
+          const otherTasks = allTasks.filter(
+            (t) => !getTaskAssignees(t).some((a) => a.id === currentUser?.id)
+          );
 
-            {(project.tasks || []).length === 0 ? (
-              <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50/50 p-8 text-center text-sm text-slate-500">
-                No tasks in this project yet. Click "+ Add Task" above to create your first task.
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {(project.tasks || []).map((task) => {
-                  const colName = columns.find((c) => c.id === task.status)?.name || task.status;
-                  return (
-                    <div
-                      key={task.id}
-                      onClick={() => setViewingTask(task)}
-                      className="group flex flex-col md:flex-row md:items-center justify-between gap-4 cursor-pointer rounded-xl border border-slate-200/90 bg-white p-4 transition hover:border-[#3ec170]/60"
+          const renderTaskRow = (task: TaskItem) => {
+            const colName = columns.find((c) => c.id === task.status)?.name || task.status;
+            const assigneesList = getTaskAssignees(task);
+
+            return (
+              <div
+                key={task.id}
+                onClick={() => setViewingTask(task)}
+                className={`group flex flex-col md:flex-row md:items-center justify-between gap-4 cursor-pointer rounded-xl border border-slate-200/90 bg-white p-4 transition  ${getPriorityTopBorder(task.priority)}`}
+              >
+                <div className="space-y-1.5 min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+      
+              
+                    {assigneesList.length > 0 && (
+                      <div className="flex items-center gap-1 text-[11px] text-slate-500 font-medium">
+                        <span>Assignees:</span>
+                        <div className="flex flex-wrap gap-1">
+                          {assigneesList.map((a) => (
+                            <span
+                              key={`${task.id}-list-assignee-${a.id}`}
+                              className="rounded-full bg-slate-50 border border-slate-200 px-2 py-0.5 text-[10px] text-slate-600"
+                            >
+                              {a.name}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <h3 className="text-base font-semibold text-slate-900 group-hover:text-[#2b9f58] transition">
+                    {task.title}
+                  </h3>
+
+                  {task.description ? (
+                    <p className="text-xs text-slate-500 line-clamp-1">{task.description}</p>
+                  ) : null}
+                </div>
+
+                <div className="flex items-center gap-4 shrink-0">
+                  <div className="flex items-center gap-3 text-xs text-slate-500">
+                    {task.dueDate ? (
+                      <span>Due: {new Date(task.dueDate).toLocaleDateString()}</span>
+                    ) : null}
+                    {(task.attachments?.length || 0) > 0 ? (
+                      <span className="flex items-center gap-1">
+                        <FiPaperclip className="w-3.5 h-3.5" />
+                        {task.attachments!.length}
+                      </span>
+                    ) : null}
+                    {(task.comments?.length || 0) > 0 ? (
+                      <span className="flex items-center gap-1">
+                        <FiMessageSquare className="w-3.5 h-3.5" />
+                        {task.comments!.length}
+                      </span>
+                    ) : null}
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      title="Edit Task"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openEditTaskModal(task);
+                      }}
+                      className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition"
                     >
-                      <div className="space-y-1.5 min-w-0 flex-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="rounded-md bg-slate-100 border border-slate-200 px-2.5 py-0.5 text-[11px] font-semibold text-slate-700 uppercase">
-                            {colName}
-                          </span>
-                          <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${priorityStyles[String(task.priority || "medium").toLowerCase()] || priorityStyles.medium}`}>
-                            {task.priority || "medium"}
-                          </span>
-                          {(() => {
-                            const assigneesList = getTaskAssignees(task);
-                            if (!assigneesList.length) return null;
-                            return (
-                              <div className="flex items-center gap-1 text-[11px] text-slate-500 font-medium">
-                                <span>Assignees:</span>
-                                <div className="flex flex-wrap gap-1">
-                                  {assigneesList.map((a) => (
-                                    <span
-                                      key={`${task.id}-list-assignee-${a.id}`}
-                                      className="rounded-full bg-slate-50 border border-slate-200 px-2 py-0.5 text-[10px] text-slate-600"
-                                    >
-                                      {a.name}
-                                    </span>
-                                  ))}
-                                </div>
-                              </div>
-                            );
-                          })()}
-                        </div>
-
-                        <h3 className="text-base font-semibold text-slate-900 group-hover:text-[#2b9f58] transition">
-                          {task.title}
-                        </h3>
-
-                        {task.description ? (
-                          <p className="text-xs text-slate-500 line-clamp-1">{task.description}</p>
-                        ) : null}
-                      </div>
-
-                      <div className="flex items-center gap-4 shrink-0">
-                        <div className="flex items-center gap-3 text-xs text-slate-500">
-                          {task.dueDate ? (
-                            <span>Due: {new Date(task.dueDate).toLocaleDateString()}</span>
-                          ) : null}
-                          {(task.attachments?.length || 0) > 0 ? (
-                            <span className="flex items-center gap-1">
-                              <FiPaperclip className="w-3.5 h-3.5" />
-                              {task.attachments!.length}
-                            </span>
-                          ) : null}
-                          {(task.comments?.length || 0) > 0 ? (
-                            <span className="flex items-center gap-1">
-                              <FiMessageSquare className="w-3.5 h-3.5" />
-                              {task.comments!.length}
-                            </span>
-                          ) : null}
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            title="Edit Task"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openEditTaskModal(task);
-                            }}
-                            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                            </svg>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setViewingTask(task);
-                            }}
-                            className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-[#3ec170]/10 hover:text-[#2b9f58] transition"
-                          >
-                            View Details
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setViewingTask(task);
+                      }}
+                      className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-[#3ec170]/10 hover:text-[#2b9f58] transition"
+                    >
+                      View Details
+                    </button>
+                  </div>
+                </div>
               </div>
-            )}
-          </div>
-        )}
+            );
+          };
+
+          return (
+            <div className="space-y-6 rounded-2xl border border-slate-200/90 bg-white p-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900">Project Tasks</h2>
+                  <p className="text-xs text-slate-500">Grouped by assignment and Kanban board sections</p>
+                </div>
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <span className="rounded-full bg-[#3ec170]/10 border border-[#3ec170]/30 px-3 py-1 text-xs text-[#2b9f58] font-bold">
+                    {myTasks.length} Assigned to You
+                  </span>
+                  <span className="rounded-full bg-slate-100 border border-slate-200 px-3 py-1 text-xs text-slate-700 font-medium">
+                    {allTasks.length} Total Tasks
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => openNewTaskModal(columns[0] || defaultColumns[0])}
+                    className="rounded-xl bg-[#3ec170] px-4 py-2 text-sm font-semibold text-white hover:bg-[#65cd8c] transition cursor-pointer"
+                  >
+                    + Add Task
+                  </button>
+                </div>
+              </div>
+
+              {allTasks.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50/50 p-8 text-center text-sm text-slate-500">
+                  No tasks in this project yet. Click "+ Add Task" above to create your first task.
+                </div>
+              ) : (
+                <div className="space-y-8">
+                  {/* SECTION 1: Assigned to You */}
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+                      <div className="flex items-center gap-2">
+                        <div className="h-3 w-3 rounded-full bg-[#3ec170]" />
+                        <h3 className="text-base font-bold text-slate-900">Assigned to You</h3>
+                        <span className="rounded-full bg-[#3ec170]/15 text-[#2b9f58] border border-[#3ec170]/30 px-2 py-0.5 text-xs font-bold">
+                          {myTasks.length}
+                        </span>
+                      </div>
+                      <span className="text-xs text-slate-500 hidden sm:inline-block">
+                        Your tasks organized by board column
+                      </span>
+                    </div>
+
+                    {myTasks.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 p-4 text-center text-xs text-slate-500">
+                        No tasks currently assigned to you in this project.
+                      </div>
+                    ) : (
+                      <div className="space-y-5">
+                        {columns.map((column) => {
+                          const colTasks = myTasks.filter(
+                            (t) => (t.status || "todo").toLowerCase() === column.id.toLowerCase()
+                          );
+                          if (colTasks.length === 0) return null;
+
+                          return (
+                            <div key={`my-section-${column.id}`} className="space-y-2.5 pl-2.5 sm:pl-3.5 border-l-2 border-[#3ec170]/50">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                                  {column.name}
+                                </span>
+                                <span className="rounded-full bg-slate-100 px-2 py-0.2 text-[10px] font-bold text-slate-600">
+                                  {colTasks.length}
+                                </span>
+                              </div>
+                              <div className="space-y-2.5">
+                                {colTasks.map(renderTaskRow)}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* SECTION 2: All Other Tasks */}
+                  <div className="space-y-4 pt-2">
+                    <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+                      <div className="flex items-center gap-2">
+                        <div className="h-3 w-3 rounded-full bg-[#3ec1b1]" />
+                        <h3 className="text-base font-bold text-slate-900">All Other Tasks</h3>
+                        <span className="rounded-full bg-slate-100 border border-slate-200 px-2 py-0.5 text-xs font-bold text-slate-700">
+                          {otherTasks.length}
+                        </span>
+                      </div>
+                      <span className="text-xs text-slate-500 hidden sm:inline-block">
+                        Tasks assigned to other teammates or unassigned
+                      </span>
+                    </div>
+
+                    {otherTasks.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 p-4 text-center text-xs text-slate-500">
+                        All tasks in this project are assigned to you.
+                      </div>
+                    ) : (
+                      <div className="space-y-5">
+                        {columns.map((column) => {
+                          const colTasks = otherTasks.filter(
+                            (t) => (t.status || "todo").toLowerCase() === column.id.toLowerCase()
+                          );
+                          if (colTasks.length === 0) return null;
+
+                          return (
+                            <div key={`other-section-${column.id}`} className="space-y-2.5 pl-2.5 sm:pl-3.5 border-l-2 border-[#3ec1b1]/50">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                                  {column.name}
+                                </span>
+                                <span className="rounded-full bg-slate-100 px-2 py-0.2 text-[10px] font-bold text-slate-600">
+                                  {colTasks.length}
+                                </span>
+                              </div>
+                              <div className="space-y-2.5">
+                                {colTasks.map(renderTaskRow)}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Tab Content 3: Dashboard Overview with 4 Metric Cards & 4 Recharts Analytics */}
         {activeTab === "dashboard" && (() => {
@@ -2356,6 +2488,51 @@ export default function ProjectDetailPage() {
           </div>
         </div>
       ) : null}
+
+      {/* ── Delete Project Confirmation Modal Popup ── */}
+      {deleteProjectModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 backdrop-blur-xs p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 text-slate-900 border border-slate-200 shadow-2xl">
+            <div className="mb-4 flex items-center gap-3.5">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-rose-100 text-rose-600">
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Delete Project</h3>
+                <p className="text-xs text-slate-500">This action cannot be undone.</p>
+              </div>
+            </div>
+
+            <p className="text-sm text-slate-600 mb-6 leading-relaxed">
+              Are you sure you want to delete <span className="font-semibold text-slate-900">"{project?.title}"</span>? All tasks, columns, comments, and project data will be permanently removed.
+            </p>
+
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                disabled={isDeletingProject}
+                onClick={() => setDeleteProjectModalOpen(false)}
+                className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingProject}
+                onClick={handleConfirmDeleteProject}
+                className="rounded-xl bg-rose-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-rose-700 transition flex items-center gap-2 disabled:opacity-50 shadow-sm shadow-rose-600/30"
+              >
+                {isDeletingProject && (
+                  <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                )}
+                <span>{isDeletingProject ? "Deleting..." : "Delete Project"}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Chat Side Panel (slides in from right) ── */}
       <div

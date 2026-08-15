@@ -4,6 +4,7 @@ import api from "@/api";
 import { createProjectSchema } from "@/lib/schemas";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { useEffect, useState, useId } from "react";
 import {
   FiPlus,
@@ -297,10 +298,11 @@ export default function ProjectsPage() {
       setDescription("");
       setFieldErrors({});
       setIsCreateModalOpen(false);
+      toast.success("Project created successfully");
       await loadProjects();
     } catch (error) {
       console.error(error);
-      alert(error instanceof Error ? error.message : "Failed to create project");
+      toast.error(error instanceof Error ? error.message : "Failed to create project");
     } finally {
       setLoading(false);
     }
